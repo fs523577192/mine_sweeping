@@ -335,6 +335,15 @@ ws.on('message', function incoming(data) {
         drawMap(JSON.parse(data));
         play();
     } else {
-        toDo(JSON.parse(data));
+        data = JSON.parse(data);
+        if ('tiles' === data.e) {
+            updateMap({
+                d: {
+                    tiles: data.d
+                }
+            });
+        } else if ('cursor' !== data.e) {
+            toDo(data);
+        }
     }
 });
