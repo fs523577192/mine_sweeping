@@ -1,14 +1,37 @@
 const WebSocket = require('ws');
 const Box = require('./Box');
 
-const userId = '16d2f550-433c-4a5c-9cf4-577b280cac51';
-let tx = 0, ty = 0;
-if (process.argv.length != 4) {
+const userIds = [
+    '16d2f550-433c-4a5c-9cf4-577b280cac51',
+    '44b3e047-8672-43d0-8dfa-86ead8c9abb1'
+];
+const cookies = [
+    '__cfduid=dc8563b82e0160e517fe84d9047dab39c1498619079;' +
+    'connect.sid=s%3ACgYe4E2V7QpQTK3hgs59U8y7We_Tfase.LmzMrjH7F0ULXWD2cz8dfDu7UXWdyzd%2F19Xlmc2dOuw;' +
+    '__utmt=1; __utma=45149496.1357259984.1498619082.1504084404.1504141723.30;' +
+    '__utmb=45149496.1.10.1504141723; __utmc=45149496;' +
+    '__utmz=45149496.1498619082.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none);' +
+    'user_id=' + userIds[0],
+
+    '__cfduid=d1a011679a15c5286965b39b60532d8221503326927;' +
+    'connect.sid=s%3AWf1Erq1nY8xQJGtgWEoEJYy0LAtkVAic.w3x3prq9f3dm9q6ZzIxzTKaxboP%2FEwt%2ByP79O1YiCvA;' +
+    '__utma=45149496.1735893319.1477747195.1503496865.1504341677.4;' +
+    '__utmb=45149496.76.9.1504346428885; __utmc=45149496;' +
+    '__utmz=45149496.1503326969.2.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none);' +
+    'user_id=' + userIds[1]
+];
+let tx = 0, ty = 0, profileNumber = 0;
+if (process.argv.length != 5) {
     console.log('Please input the coordinate');
     return;
 }
-tx = Number(process.argv[2]);
-ty = Number(process.argv[3]);
+profileNumber = Number(process.argv[2]);
+if (0 !== profileNumber && 1 !== profileNumber) {
+    console.log('Invalid index of profile');
+    return;
+}
+tx = Number(process.argv[3]);
+ty = Number(process.argv[4]);
 if (Number.isNaN(tx) || Number.isNaN(ty)) {
     console.log('Invalid coordinate');
     return;
@@ -17,12 +40,7 @@ if (Number.isNaN(tx) || Number.isNaN(ty)) {
 const ws = new WebSocket('wss://mienfield.com/io', {
     origin: 'https://mienfield.com',
     headers: {
-        cookie: '__cfduid=dc8563b82e0160e517fe84d9047dab39c1498619079;' +
-                'connect.sid=s%3ACgYe4E2V7QpQTK3hgs59U8y7We_Tfase.LmzMrjH7F0ULXWD2cz8dfDu7UXWdyzd%2F19Xlmc2dOuw;' +
-                '__utmt=1; __utma=45149496.1357259984.1498619082.1504084404.1504141723.30;' +
-                '__utmb=45149496.1.10.1504141723; __utmc=45149496;' +
-                '__utmz=45149496.1498619082.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none);' +
-                'user_id=' + userId,
+        cookie: cookies[profileNumber],
     }
 });
 
@@ -48,7 +66,7 @@ function messageBase() {
         c,
         d: {
             time: timestamp(),
-            user_id: userId
+            user_id: userIds[profileNumber]
         }
     };
 }
@@ -346,4 +364,8 @@ ws.on('message', function incoming(data) {
             toDo(data);
         }
     }
+});
+
+ws.on('error', function () {
+    console.log('Fail to connect to the server');
 });
