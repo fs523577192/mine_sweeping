@@ -45,9 +45,8 @@ const ws = new WebSocket('wss://mienfield.com/io', {
 });
 
 let c = 0; // message count
-let width = 40, height = 40;
-let w0 = 20; // The width of the first area;
-let h0 = 20; // The height of the first area;
+const w0 = 20, h0 = 20; // The size of one block;
+const width = 80, height = 60; // 4 x 3
 const sizes = [[], [], []];
 const map = [];
 const initToDo = function (data) {
@@ -98,39 +97,12 @@ function getTiles() {
 }
 
 function initializeMap() {
-    // w0 = sizes[0][0][0];
-    // h0 = sizes[0][0][1];
-    // width = w0 + sizes[0][1][0];
-    // height = h0 + sizes[1][0][1];
-    // console.log('width: ' + width + ', height: ' + height);
-    // console.log('w0: ' + w0 + ', h0: ' + h0);
-    
     for (let i = 0; i < height; i += 1) {
         const row = [];
         for (let j = 0; j < width; j += 1) {
             row.push(new Box(j, i, 0));
         }
         map.push(row);
-    }
-    for (let item of sizes[0][0][2]) {
-        let x = item[0];
-        let y = item[1];
-        map[y][x] = new Box(x, y, item[2]);
-    }
-    for (let item of sizes[0][1][2]) {
-        let x = item[0] + w0;
-        let y = item[1];
-        map[y][x] = new Box(x, y, item[2]);
-    }
-    for (let item of sizes[1][0][2]) {
-        let x = item[0];
-        let y = item[1] + h0;
-        map[y][x] = new Box(x, y, item[2]);
-    }
-	for (let item of sizes[1][1][2]) {
-        let x = item[0] + w0;
-        let y = item[1] + h0;
-        map[y][x] = new Box(x, y, item[2]);
     }
 }
 
@@ -180,23 +152,26 @@ function drawMap(data) {
         console.log(data.d);
         return;
     }
-    let tile = [];
+
+    initializeMap();
     for (let item of tiles) {
-        let x0 = item[0];
-        let y0 = item[1];
+        let dx = item[0] - tx;
+        let dy = item[1] - ty;
         let tile = item[2];
         if (!Array.isArray(tile) || !tile.length ||
-                x0 - tx >= 4 || y0 - ty >= 3) {
+                dx >= 4 || dy >= 3) {
             continue;
         }
         
-        let w = tile[0][0] + 1;
-        let h = tile[0][1] + 1;
-        sizes[y0 - ty][x0 - tx] = [w, h, tile];
+        dx *= w0;
+        dy *= h0;
+        for (let item of tile) {
+            let x = dx + item[0];
+            let y = dy + item[1];
+            map[y][x] = new Box(x, y, item[2]);
+        }
     }
-    initializeMap();
     calculate();
-	console.log(map[7][22]);
 }
 
 function findFlag() {
@@ -236,18 +211,10 @@ function findOpen() {
 function boxMessage(temp) {
     const message = messageBase();
     message.d.field_id = 'main';
-    message.d.tx = tx;
-    message.d.ty = ty;
-    message.d.cx = temp[0];
-    message.d.cy = temp[1];
-    if (temp[0] >= w0) {
-        message.d.tx += 1;
-        message.d.cx -= w0;
-    }
-    if (temp[1] >= h0) {
-        message.d.ty += 1;
-        message.d.cy -= h0;
-    }
+    message.d.tx = tx + Math.floor(temp[0] / w0);
+    message.d.ty = ty + Math.floor(temp[1] / h0);
+    message.d.cx = temp[0] % w0;
+    message.d.cy = temp[1] % h0;
     return message;
 }
 
@@ -322,14 +289,10 @@ function updateMap(data) {
         return false;
     }
     for (let item of data.d.tiles) {
-        if (item[0] === tx && item[1] === ty) {
-            updateBoxes(0, 0, item[2]);
-        } else if (item[0] === tx + 1 && item[1] === ty) {
-            updateBoxes(w0, 0, item[2]);
-        } else if (item[0] === tx && item[1] === ty + 1) {
-            updateBoxes(0, h0, item[2]);
-        } else if (item[0] === tx + 1 && item[1] === ty + 1) {
-            updateBoxes(w0, h0, item[2]);
+        let dx = item[0] - tx;
+        let dy = item[1] - ty;
+        if (dx >= 0 && dx < 4 && dy >= 0 && dy < 3) {
+            updateBoxes(dx * w0, dy * h0, item[2]);
         }
     }
     return true;
