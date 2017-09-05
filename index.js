@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const Box = require('./Box');
+const Map = require('./Map');
 
 const userIds = [
     '16d2f550-433c-4a5c-9cf4-577b280cac51',
@@ -48,7 +49,7 @@ let c = 0; // message count
 const w0 = 20, h0 = 20; // The size of one block;
 const width = 80, height = 60; // 4 x 3
 const sizes = [[], [], []];
-const map = [];
+let map = null;
 const initToDo = function (data) {
     if (updateMap(data)) {
         play();
@@ -70,16 +71,6 @@ function messageBase() {
     };
 }
 
-function debugMap() {
-    for (let i = 0; i < 40; i += 1) {
-        let temp = '';
-        for (let j = 0; j < 40; j += 1) {
-            temp = temp + map[i][j].getDisplay();
-        }
-        console.log(temp);
-    }
-}
-
 function getTiles() {
     let message = messageBase();
     message.e = 'tiles';
@@ -96,55 +87,6 @@ function getTiles() {
     console.log('tiles requested');
 }
 
-function initializeMap() {
-    for (let i = 0; i < height; i += 1) {
-        const row = [];
-        for (let j = 0; j < width; j += 1) {
-            row.push(new Box(j, i, 0));
-        }
-        map.push(row);
-    }
-}
-
-function increaseMineCount(i, j) {
-    for (let y = (i <= 0 ? 0 : i - 1); y <= i + 1 && y < height; y += 1) {
-        for (let x = (j <= 0 ? 0 : j - 1); x <= j + 1 && x < width; x += 1) {
-            map[y][x].mineCount += 1;
-        }
-    }
-    map[i][j].mineCount -= 1; // restore the value of self
-}
-
-function decreaseNotOpenCount(i, j) {
-    for (let y = (i <= 0 ? 0 : i - 1); y <= i + 1 && y < height; y += 1) {
-        for (let x = (j <= 0 ? 0 : j - 1); x <= j + 1 && x < width; x += 1) {
-            map[y][x].notOpenCount -= 1;
-        }
-    }
-    map[i][j].notOpenCount += 1; // restore the value of self
-}
-
-function calculate() {
-    for (let i = 0; i < height; i += 1) {
-        for (let j = 0; j < width; j += 1) {
-            let box = map[i][j];
-            box.mineCount = 0;
-            box.notOpenCount = 8;
-        }
-    }
-    for (let i = 0; i < height; i += 1) {
-        for (let j = 0; j < width; j += 1) {
-            let box = map[i][j];
-            if (box.isMine || box.isFlag) {
-                increaseMineCount(i, j, map);
-                decreaseNotOpenCount(i, j, map);
-            } else if (box.isOpen) {
-                decreaseNotOpenCount(i, j, map);
-            }
-        }
-    }
-}
-
 function drawMap(data) {
     console.log('tiles received');
     let tiles = data.d.tiles;
@@ -153,7 +95,7 @@ function drawMap(data) {
         return;
     }
 
-    initializeMap();
+    map = new Map(width, height);
     for (let item of tiles) {
         let dx = item[0] - tx;
         let dy = item[1] - ty;
@@ -168,10 +110,10 @@ function drawMap(data) {
         for (let item of tile) {
             let x = dx + item[0];
             let y = dy + item[1];
-            map[y][x] = new Box(x, y, item[2]);
+            map.setBox(x, y, item[2], false);
         }
     }
-    calculate();
+    map.calculate();
 }
 
 function findFlag() {
@@ -179,8 +121,8 @@ function findFlag() {
     let maxCount = 0;
     for (let i = 1; i < height - 1; i += 1) {
         for (let j = 1; j < width - 1; j += 1) {
-            let box = map[i][j];
-            if (box.isOpen && box.notOpenCount + box.mineCount === box.mines) {
+            let box = map.getBox(j, i);
+            if (box.isOpen() && box.notOpenCount + box.mineCount === box.mines) {
                 if (box.notOpenCount > maxCount) {
                     result = [j, i];
                     maxCount = box.notOpenCount;
