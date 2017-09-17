@@ -1,5 +1,17 @@
 const WebSocket = require('ws');
 const Box = require('./Box');
+const Play = require('./Play');
+const increaseMineCount = Play.increaseMineCount;
+const decreaseNotOpenCount = Play.decreaseNotOpenCount;
+const calculate = Play.calculate;
+const flagBox = Play.flagBox;
+const afterFlag = Play.afterFlag;
+const findFlag = Play.findFlag;
+const findOpen = Play.findOpen;
+
+Array.prototype.isEmpty = function () {
+    return this.length <= 0;
+};
 
 const userIds = [
     '16d2f550-433c-4a5c-9cf4-577b280cac51',
@@ -106,45 +118,6 @@ function initializeMap() {
     }
 }
 
-function increaseMineCount(i, j) {
-    for (let y = (i <= 0 ? 0 : i - 1); y <= i + 1 && y < height; y += 1) {
-        for (let x = (j <= 0 ? 0 : j - 1); x <= j + 1 && x < width; x += 1) {
-            map[y][x].mineCount += 1;
-        }
-    }
-    map[i][j].mineCount -= 1; // restore the value of self
-}
-
-function decreaseNotOpenCount(i, j) {
-    for (let y = (i <= 0 ? 0 : i - 1); y <= i + 1 && y < height; y += 1) {
-        for (let x = (j <= 0 ? 0 : j - 1); x <= j + 1 && x < width; x += 1) {
-            map[y][x].notOpenCount -= 1;
-        }
-    }
-    map[i][j].notOpenCount += 1; // restore the value of self
-}
-
-function calculate() {
-    for (let i = 0; i < height; i += 1) {
-        for (let j = 0; j < width; j += 1) {
-            let box = map[i][j];
-            box.mineCount = 0;
-            box.notOpenCount = 8;
-        }
-    }
-    for (let i = 0; i < height; i += 1) {
-        for (let j = 0; j < width; j += 1) {
-            let box = map[i][j];
-            if (box.isMine || box.isFlag) {
-                increaseMineCount(i, j, map);
-                decreaseNotOpenCount(i, j, map);
-            } else if (box.isOpen) {
-                decreaseNotOpenCount(i, j, map);
-            }
-        }
-    }
-}
-
 function drawMap(data) {
     console.log('tiles received');
     let tiles = data.d.tiles;
@@ -158,7 +131,7 @@ function drawMap(data) {
         let dx = item[0] - tx;
         let dy = item[1] - ty;
         let tile = item[2];
-        if (!Array.isArray(tile) || !tile.length ||
+        if (!Array.isArray(tile) || tile.isEmpty() ||
                 dx >= 4 || dy >= 3) {
             continue;
         }
@@ -171,41 +144,7 @@ function drawMap(data) {
             map[y][x] = new Box(x, y, item[2]);
         }
     }
-    calculate();
-}
-
-function findFlag() {
-    let result = [];
-    let maxCount = 0;
-    for (let i = 1; i < height - 1; i += 1) {
-        for (let j = 1; j < width - 1; j += 1) {
-            let box = map[i][j];
-            if (box.isOpen && box.notOpenCount + box.mineCount === box.mines) {
-                if (box.notOpenCount > maxCount) {
-                    result = [j, i];
-                    maxCount = box.notOpenCount;
-                }
-            }
-        }
-    }
-    return result;
-}
-
-function findOpen() {
-    let result = [];
-    let maxCount = 0;
-    for (let i = 1; i < height - 1; i += 1) {
-        for (let j = 1; j < width - 1; j += 1) {
-            let box = map[i][j];
-            if (box.isOpen && !box.isEmpty &&
-                    box.mineCount === box.mines &&
-                    box.notOpenCount > maxCount) {
-                result = [j, i];
-                maxCount = box.notOpenCount;
-            }
-        }
-    }
-    return result;
+    calculate(map, width, height);
 }
 
 function boxMessage(temp) {
@@ -218,30 +157,16 @@ function boxMessage(temp) {
     return message;
 }
 
-function afterFlag(j, i) {
-    // console.log('flagging: ');
-    // console.log(map[i][j]);
-    for (let y = (i <= 0 ? 0 : i - 1); y <= i + 1 && y < height; y += 1) {
-        for (let x = (j <= 0 ? 0 : j - 1); x <= j + 1 && x < width; x += 1) {
-            if (!map[y][x].isOpen) {
-                map[y][x].isFlag = true;
-                increaseMineCount(y, x);
-                decreaseNotOpenCount(y, x);
-            }
-        }
-    }
-}
-
 function flag() {
-    const temp = findFlag();
-    if (!temp.length) return temp;
+    const temp = findFlag(map, width);
+    if (temp.isEmpty()) return temp;
     console.log('flag: ' + temp[0] + ', ' + temp[1]);
     
     const message = boxMessage(temp);
     message.e = 'flag';
     console.log(message);
     toDo = function (data) {
-        afterFlag(temp[0], temp[1]);
+        afterFlag(map, temp[0], temp[1]);
         initToDo(data);
     };
     ws.send(JSON.stringify(message));
@@ -249,8 +174,8 @@ function flag() {
 }
 
 function open() {
-    const temp = findOpen();
-    if (!temp.length) return temp;
+    const temp = findOpen(map, width);
+    if (temp.isEmpty()) return temp;
     console.log('open: ' + temp[0] + ', ' + temp[1]);
     console.log(map[temp[1]][temp[0]]);
     
@@ -262,25 +187,164 @@ function open() {
     return temp;
 }
 
+function afterOpen(map, y, x, info) {
+    for (let i = Math.max(y - 1, 1); i <= Math.min(y + 1, height - 2); i += 1) {
+        for (let j = Math.max(x - 1, 1); j <= Math.min(x + 1, width - 2); j += 1) {
+            const box = map[i][j];
+            if (!box.isFlag && !box.isEmpty && !box.isOpen) {
+                info.open['_' + i + '_' + j] = true;
+            }
+        }
+    }
+}
+
+function afterTryFlag(map, y, x, info) {
+    for (let i = Math.max(y - 1, 1); i < Math.min(y + 1, height - 2); i += 1) {
+        for (let j = Math.max(x - 1, 1); j < Math.min(x + 1, width - 2); j += 1) {
+            const box = map[i][j];
+            if (box.isOpen && !box.isEmpty) {
+                if (box.mineCount > box.mines) return [];
+                if (box.mineCount === box.mines) {
+                    afterOpen(map, i, j, info);
+                }
+            }
+        }
+    }
+    return info;
+}
+
+function tryFlag(y, x, r, c) {
+    const info = {open: {}, flag: {}};
+    let tryMap = JSON.parse(JSON.stringify(map));
+    for (let i = Math.max(y - 1, 0); i < Math.min(y + 1, height - 1); i += 1) {
+        for (let j = Math.max(x - 1, 0); j < Math.min(x + 1, width - 1); j += 1) {
+            const box = tryMap[i][j];
+            if (!box.isFlag && !box.isMine && !box.isOpen &&
+                    (i != r || j != c)) {
+                info.flag['_' + i + '_' + j] = true;
+                flagBox(tryMap, i, j);
+                const result = afterTryFlag(tryMap, y, x, info);
+                if (result.isEmpty()) return null;
+            }
+        }
+    }
+    return info;
+}
+
+function getCoordinateFromKey(key) {
+    const temp = key.substring(1).split('_');
+    return [parseInt(temp[1]), parseInt(temp[0])];
+}
+
+function flagInTry(info, listLength) {
+    const toFlag = [];
+    for (let key in info.flag) {
+        if (info.flag[key] >= list.length) {
+            const temp = getCoordinateFromKey(key);
+            toFlag.push(temp);
+            const message = boxMessage(temp);
+            message.e = 'flag';
+            console.log(message);
+            ws.send(JSON.stringify(message));
+        }
+    }
+    toDo = function (data) {
+        for (let item in toFlag) {
+            flagBox(map, item[1], item[0]);
+        }
+        initToDo(data);
+    }
+    return !toFlag.isEmpty();
+}
+
+function openInTry(info, listLength) {
+    let result = false;
+    for (let key in info.open) {
+        if (result.open[key] >= list.length) {
+            const message = boxMessage(getCoordinateFromKey(key));
+            message.e = 'open';
+            console.log(message);
+            ws.send(JSON.stringify(message));
+            result = true;
+        }
+    }
+    return result;
+}
+
+function tryOpen(y, x) {
+    const toOpen = [];
+    for (let i = Math.max(y - 1, 0); i < Math.min(y + 1, height - 1); i += 1) {
+        for (let j = Math.max(x - 1, 0); j < Math.min(x + 1, width - 1); j += 1) {
+            const box = map[i][j];
+            if (!box.isFlag && !box.isMine && !box.isOpen) {
+                toOpen.push([i, j]);
+            }
+        }
+    }
+    if (toOpen.isEmpty()) return false;
+
+    const list = [];
+    for (let item of toOpen) {
+        const result = tryFlag(y, x, item[0], item[1]);
+        if (result) {
+            list.push(result);
+        }
+    }
+    const info = {open: {}, flag: {}};
+    for (let item of list) {
+        for (let key in info.open) {
+            if (typeof(info.open[key]) !== 'number') {
+                info.open[key] = 1;
+            } else {
+                info.open[key] += 1;
+            }
+        }
+        for (let key in info.flag) {
+            if (typeof(info.flag[key]) !== 'number') {
+                info.flag[key] = 1;
+            } else {
+                info.flag[key] += 1;
+            }
+        }
+    }
+    const resultFlag = flagInTry(info, list.length);
+    const resultOpen = openInTry(info, list.length);
+    return resultFlag || resultOpen;
+}
+
 function play() {
-    let result = flag();
-    if (!result.length) {
-        result = open();
-        if (!result.length) {
-            console.log('end');
-			ws.close();
+    let result = flag(map);
+    if (result.isEmpty()) {
+        result = open(map);
+        if (result.isEmpty()) {
+            let changed = false;
+            for (let i = 1; i < height - 1; i += 1) {
+                for (let j = 1; j < width - 1; j += 1) {
+                    const box = map[i][j];
+                    if (box.isOpen &&
+                            box.notOpenCount - box.mineCount == 1) {
+                        changed = false;//tryOpen(i, j);
+                    }
+                }
+            }
+            if (changed) {
+                play();
+            } else {
+                console.log('end');
+                ws.close();
+            }
         }
     }
 }
 
 function updateBoxes(x0, y0, list) {
-    if (!Array.isArray(list) || !list.length) return;
+    if (!Array.isArray(list) || list.isEmpty()) return;
     console.log('updateBoxes: ' + x0 + ', ' + y0);
     for (let item of list) {
         let box = new Box(x0 + item[0], y0 + item[1], item[2]);
         map[box.y][box.x] = box;
     }
-    calculate();
+    calculate(map, width, height);
 }
 
 function updateMap(data) {
