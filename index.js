@@ -14,15 +14,15 @@ Array.prototype.isEmpty = function () {
 };
 
 const userIds = [
-    '16d2f550-433c-4a5c-9cf4-577b280cac51',
+    '918fe203-f88d-492d-a6d3-9117754c2c57',
     '44b3e047-8672-43d0-8dfa-86ead8c9abb1'
 ];
 const cookies = [
-    '__cfduid=dc8563b82e0160e517fe84d9047dab39c1498619079;' +
-    'connect.sid=s%3ACgYe4E2V7QpQTK3hgs59U8y7We_Tfase.LmzMrjH7F0ULXWD2cz8dfDu7UXWdyzd%2F19Xlmc2dOuw;' +
-    '__utmt=1; __utma=45149496.1357259984.1498619082.1504084404.1504141723.30;' +
-    '__utmb=45149496.1.10.1504141723; __utmc=45149496;' +
-    '__utmz=45149496.1498619082.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none);' +
+    '__cfduid=d901a94bc27aef7671f7209460420a3b31505718141;' +
+    'connect.sid=d901a94bc27aef7671f7209460420a3b31505718141;' +
+    '__utmt=1; __utma=45149496.474683751.1505718145.1505718145.1505718145.1;' +
+    '__utmb=45149496.19.9.1505718685055; __utmc=45149496;' +
+    '__utmz=45149496.1505718145.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none);' +
     'user_id=' + userIds[0],
 
     '__cfduid=d1a011679a15c5286965b39b60532d8221503326927;' +
@@ -187,25 +187,25 @@ function open() {
     return temp;
 }
 
-function afterOpen(map, y, x, info) {
+function afterOpen(theMap, y, x, info) {
     for (let i = Math.max(y - 1, 1); i <= Math.min(y + 1, height - 2); i += 1) {
         for (let j = Math.max(x - 1, 1); j <= Math.min(x + 1, width - 2); j += 1) {
-            const box = map[i][j];
-            if (!box.isFlag && !box.isEmpty && !box.isOpen) {
+            const box = theMap[i][j];
+            if (!box.isFlag && !box.isMine && !box.isOpen) {
                 info.open['_' + i + '_' + j] = true;
             }
         }
     }
 }
 
-function afterTryFlag(map, y, x, info) {
-    for (let i = Math.max(y - 1, 1); i < Math.min(y + 1, height - 2); i += 1) {
-        for (let j = Math.max(x - 1, 1); j < Math.min(x + 1, width - 2); j += 1) {
-            const box = map[i][j];
+function afterTryFlag(theMap, y, x, info) {
+    for (let i = Math.max(y - 1, 1); i <= Math.min(y + 1, height - 2); i += 1) {
+        for (let j = Math.max(x - 1, 1); j <= Math.min(x + 1, width - 2); j += 1) {
+            const box = theMap[i][j];
             if (box.isOpen && !box.isEmpty) {
-                if (box.mineCount > box.mines) return [];
+                if (box.mineCount > box.mines) return null;
                 if (box.mineCount === box.mines) {
-                    afterOpen(map, i, j, info);
+                    afterOpen(theMap, i, j, info);
                 }
             }
         }
@@ -216,15 +216,15 @@ function afterTryFlag(map, y, x, info) {
 function tryFlag(y, x, r, c) {
     const info = {open: {}, flag: {}};
     let tryMap = JSON.parse(JSON.stringify(map));
-    for (let i = Math.max(y - 1, 0); i < Math.min(y + 1, height - 1); i += 1) {
-        for (let j = Math.max(x - 1, 0); j < Math.min(x + 1, width - 1); j += 1) {
+    for (let i = Math.max(y - 1, 0); i <= Math.min(y + 1, height - 1); i += 1) {
+        for (let j = Math.max(x - 1, 0); j <= Math.min(x + 1, width - 1); j += 1) {
             const box = tryMap[i][j];
             if (!box.isFlag && !box.isMine && !box.isOpen &&
                     (i != r || j != c)) {
                 info.flag['_' + i + '_' + j] = true;
                 flagBox(tryMap, i, j);
                 const result = afterTryFlag(tryMap, y, x, info);
-                if (result.isEmpty()) return null;
+                if (null === result) return null;
             }
         }
     }
@@ -238,43 +238,53 @@ function getCoordinateFromKey(key) {
 
 function flagInTry(info, listLength) {
     const toFlag = [];
-    for (let key in info.flag) {
-        if (info.flag[key] >= list.length) {
+    for (let key in info) {
+        if (info[key] >= listLength) {
             const temp = getCoordinateFromKey(key);
             toFlag.push(temp);
             const message = boxMessage(temp);
             message.e = 'flag';
             console.log(message);
             ws.send(JSON.stringify(message));
+
+            toDo = function (data) {
+                flagBox(map, temp[1], temp[0]);
+                initToDo(data);
+            };
+            return true;
         }
     }
+    /*
     toDo = function (data) {
-        for (let item in toFlag) {
+        for (let item of toFlag) {
             flagBox(map, item[1], item[0]);
         }
         initToDo(data);
     }
     return !toFlag.isEmpty();
+    */
+    return false;
 }
 
 function openInTry(info, listLength) {
     let result = false;
-    for (let key in info.open) {
-        if (result.open[key] >= list.length) {
+    for (let key in info) {
+        if (info[key] >= listLength) {
             const message = boxMessage(getCoordinateFromKey(key));
             message.e = 'open';
             console.log(message);
             ws.send(JSON.stringify(message));
-            result = true;
+            return result = true;
         }
     }
     return result;
 }
 
 function tryOpen(y, x) {
+    console.log('tryOpen: ' + y + ', ' + x);
     const toOpen = [];
-    for (let i = Math.max(y - 1, 0); i < Math.min(y + 1, height - 1); i += 1) {
-        for (let j = Math.max(x - 1, 0); j < Math.min(x + 1, width - 1); j += 1) {
+    for (let i = Math.max(y - 1, 0); i <= Math.min(y + 1, height - 1); i += 1) {
+        for (let j = Math.max(x - 1, 0); j <= Math.min(x + 1, width - 1); j += 1) {
             const box = map[i][j];
             if (!box.isFlag && !box.isMine && !box.isOpen) {
                 toOpen.push([i, j]);
@@ -282,6 +292,8 @@ function tryOpen(y, x) {
         }
     }
     if (toOpen.isEmpty()) return false;
+    console.log('toOpen: ');
+    console.log(toOpen);
 
     const list = [];
     for (let item of toOpen) {
@@ -292,14 +304,14 @@ function tryOpen(y, x) {
     }
     const info = {open: {}, flag: {}};
     for (let item of list) {
-        for (let key in info.open) {
+        for (let key in item.open) {
             if (typeof(info.open[key]) !== 'number') {
                 info.open[key] = 1;
             } else {
                 info.open[key] += 1;
             }
         }
-        for (let key in info.flag) {
+        for (let key in item.flag) {
             if (typeof(info.flag[key]) !== 'number') {
                 info.flag[key] = 1;
             } else {
@@ -307,9 +319,9 @@ function tryOpen(y, x) {
             }
         }
     }
-    const resultFlag = flagInTry(info, list.length);
-    const resultOpen = openInTry(info, list.length);
-    return resultFlag || resultOpen;
+    const result = flagInTry(info.flag, list.length);
+    return result || openInTry(info.open, list.length);
+    //return openInTry(info.open, list.length) || result;
 }
 
 function play() {
@@ -323,13 +335,12 @@ function play() {
                     const box = map[i][j];
                     if (box.isOpen &&
                             box.notOpenCount - box.mineCount == 1) {
-                        changed = false;//tryOpen(i, j);
+                        changed = changed || tryOpen(i, j);
+                        //changed = tryOpen(i, j) || changed;
                     }
                 }
             }
-            if (changed) {
-                play();
-            } else {
+            if (!changed) {
                 console.log('end');
                 ws.close();
             }
